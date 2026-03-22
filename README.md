@@ -10,8 +10,7 @@ Drop your photos in, get them automatically sorted into Keep / Maybe / Reject â€
 ![No Server](https://img.shields.io/badge/server-none-green.svg)
 ![Single File](https://img.shields.io/badge/file-single%20HTML-orange.svg)
 
-<!-- TODO: Add demo screenshot or GIF here -->
-<!-- ![PhotoCull AI Demo](screenshot.png) -->
+![PhotoCull AI Demo](screenshot.png)
 
 **[Try it now](https://joneilcaoile.github.io/photocull-ai/photo-culler.html)** â€” no install, no account, no upload.
 
