@@ -4,9 +4,16 @@
 
 Drop your photos in, get them automatically sorted into Keep / Maybe / Reject — all running in your browser, nothing leaves your machine.
 
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://joneilcaoile.github.io/photocull-ai/photo-culler.html)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![No Server](https://img.shields.io/badge/server-none-green.svg)
 ![Single File](https://img.shields.io/badge/file-single%20HTML-orange.svg)
+
+<!-- TODO: Add demo screenshot or GIF here -->
+<!-- ![PhotoCull AI Demo](screenshot.png) -->
+
+**[Try it now](https://joneilcaoile.github.io/photocull-ai/photo-culler.html)** — no install, no account, no upload.
 
 ## Why This Exists
 
@@ -48,6 +55,36 @@ Photo culling tools like Aftershoot and FilterPixel cost $10-30/month and send y
 4. Review results — use keyboard shortcuts for speed
 
 That's it. No install, no build, no dependencies to manage.
+
+## Architecture
+
+```
+photo-culler.html (single file)
+│
+├─ Image Loading ──→ FileReader + canvas downsampling
+│
+├─ Analysis Pipeline (per photo):
+│   ├─ Sharpness ──────→ Tenengrad (Sobel gradient magnitude²)
+│   ├─ Exposure ───────→ Histogram analysis + clipping detection
+│   ├─ Noise ──────────→ Local-mean residual isolation
+│   ├─ Color ──────────→ HSL saturation + vibrance + cast detection
+│   ├─ Composition ────→ Rule of thirds + face positioning + horizon
+│   ├─ EXIF ───────────→ Inline IFD0/ExifIFD parser (no library)
+│   ├─ Face Detection ─→ TensorFlow.js BlazeFace (CDN)
+│   │   ├─ Eye Focus ──→ Regional sharpness vs global
+│   │   ├─ Catchlight ─→ Specular highlight detection
+│   │   └─ Blink ──────→ Eye region luminance variance
+│   └─ Duplicates ─────→ dHash (9×8 → 64-bit, Hamming ≤ 8)
+│
+├─ Scoring Model ──→ Weighted combination (DE-optimized coefficients)
+│   └─ Portrait vs Non-Portrait weight redistribution
+│
+└─ UI Layer
+    ├─ Grid / Large Grid / Filmstrip views
+    ├─ Keyboard culling (1/2/3 + arrows)
+    ├─ Side-by-side comparison
+    └─ CSV export
+```
 
 ## How It Works
 
@@ -113,15 +150,35 @@ This is an honest project, so here's what it can't do:
 - Built-in EXIF parser (no external library)
 - CSS custom properties for theming
 
+## Security
+
+PhotoCull AI is security-hardened for public deployment:
+
+- HTML entity escaping (`esc()`) on all user-controlled strings (filenames, EXIF data)
+- Content Security Policy meta tag restricting script/image/connect sources
+- 80MB file size limit to prevent resource exhaustion
+- No `eval()`, no dynamic code execution, no cookies, no storage
+
+See [SECURITY.md](SECURITY.md) for the full security policy and how to report vulnerabilities.
+
+## Acknowledgments
+
+- [TensorFlow.js](https://www.tensorflow.org/js) and [BlazeFace](https://github.com/niconielsen32/ComputerVision/tree/master/BlazeFace) — face detection model by Google
+- Tenengrad sharpness metric — based on Krotkov (1988), "Focusing" in *International Journal of Computer Vision*
+- dHash perceptual hashing — based on the approach described by [Dr. Neal Krawetz](https://www.hackerfactor.com/blog/index.php?/archives/529-Kind-of-Like-That.html)
+- Differential evolution — Storn & Price (1997), "Differential Evolution — A Simple and Efficient Heuristic for Global Optimization"
+
 ## License
 
-MIT — do whatever you want with it.
+MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-PRs welcome. The codebase is a single file by design (easy to fork, share, modify). If you want to help:
+PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-1. **NIMA integration** would be the single highest-impact contribution
+The codebase is a single file by design (easy to fork, share, modify). The highest-impact contributions right now:
+
+1. **NIMA integration** for deep-learned quality scoring
 2. **Web Worker processing** for better performance on large batches
 3. **More EXIF tags** (white balance, metering mode, flash)
 4. **Better blink detection** via face landmarks model
