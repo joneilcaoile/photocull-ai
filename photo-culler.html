@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://cdnjs.cloudflare.com https://tfhub.dev https://www.kaggle.com https://storage.googleapis.com;">
 <title>PhotoCull AI v2 — Pro Photo Culling</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.17.0/tf.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow-models-blazeface/0.0.7/blazeface.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.17.0/tf.min.js" defer crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow-models-blazeface/0.0.7/blazeface.min.js" defer crossorigin="anonymous"></script>
 <style>
   :root {
     --bg: #0a0b0f;
@@ -1169,6 +1170,17 @@
 (function() {
   'use strict';
 
+  // ========== SECURITY: HTML SANITIZER ==========
+  // Escapes HTML special chars to prevent XSS from filenames and EXIF strings
+  function esc(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Max file size: 80MB (prevents memory exhaustion DoS)
+  const MAX_FILE_SIZE = 80 * 1024 * 1024;
+
   // ========== STATE ==========
   let photos = [];
   let blazefaceModel = null;
@@ -1249,7 +1261,7 @@
   dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropzone.classList.remove('dragover');
-    const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+    const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/') && f.size <= MAX_FILE_SIZE);
     if (files.length) processFiles(files);
   });
   fileInput.addEventListener('change', () => {
@@ -2293,7 +2305,7 @@
     card.className = `photo-card tier-${actualTier}${photo.isDupBest ? ' dup-best' : ''}`;
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
-    card.setAttribute('aria-label', `${photo.filename}, score ${photo.overallScore}, ${actualTier}`);
+    card.setAttribute('aria-label', `${esc(photo.filename)}, score ${photo.overallScore}, ${actualTier}`);
 
     // Build icon indicators
     let icons = '';
@@ -2308,13 +2320,13 @@
     }
 
     card.innerHTML = `
-      <img class="thumbnail" src="${photo.thumbnailUrl}" alt="${photo.filename}" loading="lazy">
+      <img class="thumbnail" src="${photo.thumbnailUrl}" alt="${esc(photo.filename)}" loading="lazy">
       <div class="card-overlay">
         <span class="tier-badge ${actualTier}">${actualTier}</span>
         <div class="card-icons">${icons}</div>
       </div>
       <div class="info">
-        <div class="filename" title="${photo.filename}">${photo.filename}</div>
+        <div class="filename" title="${esc(photo.filename)}">${esc(photo.filename)}</div>
         <div class="card-meta">
           <span class="score-badge overall-${actualTier}">${photo.overallScore}</span>
           <span class="score-badge metric">S:${photo.sharpness.score}</span>
@@ -2393,10 +2405,10 @@
     if (photo.exif && (photo.exif.iso || photo.exif.fNumber || photo.exif.exposureTime)) {
       exifSection.style.display = 'block';
       let exifItems = '';
-      if (photo.exif.model) exifItems += `<div class="exif-item"><div class="label">Camera</div><div class="value">${photo.exif.model}</div></div>`;
+      if (photo.exif.model) exifItems += `<div class="exif-item"><div class="label">Camera</div><div class="value">${esc(photo.exif.model)}</div></div>`;
       if (photo.exif.focalLength) exifItems += `<div class="exif-item"><div class="label">Focal</div><div class="value">${Math.round(photo.exif.focalLength)}mm</div></div>`;
       if (photo.exif.fNumber) exifItems += `<div class="exif-item"><div class="label">Aperture</div><div class="value">f/${photo.exif.fNumber.toFixed(1)}</div></div>`;
-      if (photo.exif.exposureTimeStr) exifItems += `<div class="exif-item"><div class="label">Shutter</div><div class="value">${photo.exif.exposureTimeStr}s</div></div>`;
+      if (photo.exif.exposureTimeStr) exifItems += `<div class="exif-item"><div class="label">Shutter</div><div class="value">${esc(photo.exif.exposureTimeStr)}s</div></div>`;
       if (photo.exif.iso) exifItems += `<div class="exif-item"><div class="label">ISO</div><div class="value">${photo.exif.iso}</div></div>`;
       exifItems += `<div class="exif-item"><div class="label">EXIF Score</div><div class="value" style="color:var(--accent-hover)">${photo.exifScore.score}</div></div>`;
       exifGrid.innerHTML = exifItems;
@@ -2549,9 +2561,9 @@
       const tier = p.manualTier || p.tier;
       return `
         <div class="compare-side">
-          <img src="${p.fullUrl}" alt="${p.filename}">
+          <img src="${p.fullUrl}" alt="${esc(p.filename)}">
           <div class="compare-side-info">
-            <span class="compare-side-name">${p.filename}</span>
+            <span class="compare-side-name">${esc(p.filename)}</span>
             <span class="score-badge overall-${tier}">${p.overallScore} ${tier}</span>
             <span class="score-badge metric">Sharp: ${p.sharpness.score}</span>
             ${p.face.hasFaces ? `<span class="score-badge metric">Eyes: ${p.face.eyeFocus}</span>` : ''}
@@ -2720,7 +2732,7 @@
     photos.forEach(p => {
       const tier = p.manualTier || p.tier;
       lines.push([
-        `"${p.filename}"`,
+        `"${p.filename.replace(/"/g, '""')}"`,
         p.overallScore,
         tier,
         p.sharpness.score,
