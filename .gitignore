@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Python (training scripts)
+__pycache__/
+*.pyc
+*.egg-info/
+venv/
+.env
+
+# Training artifacts
+*.json
+!package.json
+
+# Large files
+*.zip
+*.tar.gz

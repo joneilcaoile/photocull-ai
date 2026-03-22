@@ -1,0 +1,2754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhotoCull AI v2 — Pro Photo Culling</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.17.0/tf.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow-models-blazeface/0.0.7/blazeface.min.js" defer></script>
+<style>
+  :root {
+    --bg: #0a0b0f;
+    --surface: #14161e;
+    --surface-2: #1c1f2b;
+    --surface-hover: #232736;
+    --border: #2a2e3d;
+    --border-light: #363b50;
+    --text: #e2e4ea;
+    --text-dim: #8b8fa3;
+    --text-muted: #5c6075;
+    --keep: #22c55e;
+    --keep-bg: rgba(34,197,94,0.12);
+    --maybe: #f59e0b;
+    --maybe-bg: rgba(245,158,11,0.12);
+    --reject: #ef4444;
+    --reject-bg: rgba(239,68,68,0.12);
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-bg: rgba(99,102,241,0.1);
+    --star: #fbbf24;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-xs: 4px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ===== HEADER ===== */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo {
+    width: 26px;
+    height: 26px;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .version-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: var(--accent-bg);
+    color: var(--accent-hover);
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: var(--surface-hover); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-keep { border-color: var(--keep); color: var(--keep); }
+  .btn-maybe { border-color: var(--maybe); color: var(--maybe); }
+  .btn-reject { border-color: var(--reject); color: var(--reject); }
+  .btn-ghost { border-color: transparent; background: transparent; }
+  .btn-ghost:hover { background: var(--surface-hover); }
+
+  .model-status {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+  }
+  .model-status.ready { color: var(--keep); background: var(--keep-bg); }
+  .model-status.error { color: var(--reject); }
+
+  /* ===== TOOLBAR ===== */
+  .toolbar {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .toolbar.visible { display: flex; }
+
+  .stat-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .stat-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .stat-count { font-weight: 600; font-size: 13px; }
+  .stat-label { color: var(--text-dim); }
+
+  .toolbar-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+  }
+
+  .filter-group {
+    display: flex;
+    gap: 3px;
+  }
+
+  .filter-btn {
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .filter-btn:hover { border-color: var(--text-dim); color: var(--text); }
+  .filter-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .sort-select {
+    padding: 4px 8px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .view-toggle {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+  }
+
+  .view-btn {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .view-btn:first-child { border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
+  .view-btn:last-child { border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+  .view-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ===== MAIN ===== */
+  .main { padding: 20px; }
+
+  /* ===== DROPZONE ===== */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 80px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+    max-width: 600px;
+    margin: 60px auto;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent);
+    background: rgba(99,102,241,0.05);
+  }
+  .dropzone-icon { font-size: 48px; margin-bottom: 16px; }
+  .dropzone h2 { font-size: 18px; margin-bottom: 8px; }
+  .dropzone p { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+  .dropzone .feature-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 20px;
+  }
+  .feature-tag {
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-size: 11px;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== PROGRESS ===== */
+  .progress-container {
+    display: none;
+    margin: 20px auto;
+    max-width: 500px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 24px;
+    border: 1px solid var(--border);
+  }
+  .progress-container.visible { display: block; }
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .progress-label { font-weight: 500; }
+  .progress-count { color: var(--text-dim); }
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #a78bfa);
+    border-radius: 2px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+  .progress-status {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .progress-phase {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .phase-item {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .phase-item.active { color: var(--accent-hover); }
+  .phase-item.done { color: var(--keep); }
+
+  /* ===== PHOTO GRID ===== */
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .photo-grid.view-large {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+
+  /* ===== DUPLICATE GROUP ===== */
+  .dup-group-header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+  .dup-group-header:first-child { border-top: none; margin-top: 0; }
+  .dup-group-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-hover);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .dup-group-count {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .dup-group-best {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--keep-bg);
+    color: var(--keep);
+    font-weight: 600;
+  }
+
+  /* ===== PHOTO CARD ===== */
+  .photo-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 2px solid var(--border);
+    overflow: hidden;
+    transition: all 0.15s;
+    cursor: pointer;
+    position: relative;
+  }
+  .photo-card:hover { border-color: var(--text-dim); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .photo-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .photo-card.tier-keep { border-color: var(--keep); }
+  .photo-card.tier-maybe { border-color: var(--maybe); }
+  .photo-card.tier-reject { border-color: var(--reject); }
+  .photo-card.dup-best { box-shadow: 0 0 0 1px var(--keep), var(--shadow); }
+
+  .photo-card .thumbnail {
+    width: 100%;
+    aspect-ratio: 3/2;
+    object-fit: cover;
+    display: block;
+    background: #111;
+  }
+
+  .photo-card .card-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 6px;
+    pointer-events: none;
+  }
+
+  .tier-badge {
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    pointer-events: none;
+  }
+  .tier-badge.keep { background: var(--keep); color: #000; }
+  .tier-badge.maybe { background: var(--maybe); color: #000; }
+  .tier-badge.reject { background: var(--reject); color: #fff; }
+
+  .card-icons {
+    display: flex;
+    gap: 4px;
+  }
+  .card-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .card-icon.warn { background: rgba(239,68,68,0.7); }
+
+  .photo-card .info {
+    padding: 8px 10px;
+  }
+
+  .photo-card .filename {
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+
+  .photo-card .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .score-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .score-badge.overall-keep { background: var(--keep-bg); color: var(--keep); }
+  .score-badge.overall-maybe { background: var(--maybe-bg); color: var(--maybe); }
+  .score-badge.overall-reject { background: var(--reject-bg); color: var(--reject); }
+  .score-badge.metric { background: var(--accent-bg); color: var(--accent-hover); }
+  .score-badge.exif { background: rgba(168,85,247,0.1); color: #c084fc; }
+  .score-badge.blink-warn { background: var(--reject-bg); color: var(--reject); }
+
+  /* ===== FILMSTRIP VIEW ===== */
+  .filmstrip-container {
+    display: none;
+    flex-direction: column;
+    height: calc(100vh - 120px);
+    margin-top: 16px;
+  }
+  .filmstrip-container.visible { display: flex; }
+
+  .filmstrip-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .filmstrip-main img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .filmstrip-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 16px 20px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .filmstrip-scores {
+    display: flex;
+    gap: 12px;
+  }
+
+  .fs-score {
+    text-align: center;
+  }
+  .fs-score .label { font-size: 10px; color: rgba(255,255,255,0.6); margin-bottom: 2px; }
+  .fs-score .value { font-size: 18px; font-weight: 700; color: #fff; }
+
+  .filmstrip-tier-btns {
+    display: flex;
+    gap: 6px;
+  }
+
+  .filmstrip-strip {
+    display: flex;
+    gap: 4px;
+    padding: 8px 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .strip-thumb {
+    width: 80px;
+    height: 54px;
+    border-radius: var(--radius-xs);
+    object-fit: cover;
+    cursor: pointer;
+    border: 2px solid transparent;
+    opacity: 0.5;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .strip-thumb:hover { opacity: 0.8; }
+  .strip-thumb.active { opacity: 1; border-color: var(--accent); }
+  .strip-thumb.tier-keep { border-color: var(--keep); opacity: 0.8; }
+  .strip-thumb.tier-maybe { border-color: var(--maybe); opacity: 0.7; }
+  .strip-thumb.tier-reject { border-color: var(--reject); opacity: 0.4; }
+
+  .filmstrip-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 40px;
+    height: 60px;
+    background: rgba(0,0,0,0.5);
+    border: none;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    z-index: 2;
+  }
+  .filmstrip-nav:hover { background: rgba(0,0,0,0.8); }
+  .filmstrip-nav.prev { left: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  .filmstrip-nav.next { right: 0; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+
+  /* ===== MODAL (Detail View) ===== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.visible { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border-radius: var(--radius);
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
+  }
+
+  .modal-title { font-size: 14px; font-weight: 600; }
+  .modal-close {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    border-radius: var(--radius-xs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-close:hover { background: var(--surface-hover); }
+
+  .modal-body { padding: 20px; }
+
+  .modal-image-container {
+    width: 100%;
+    max-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .modal-image-container img {
+    max-width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+  }
+
+  .modal-scores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .detail-score-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    text-align: center;
+  }
+  .detail-score-card .label { font-size: 10px; color: var(--text-dim); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .detail-score-card .value { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .detail-score-card .bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .detail-score-card .bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+  .modal-section { margin-bottom: 16px; }
+  .modal-section-title { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+
+  .exif-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 6px;
+  }
+  .exif-item {
+    background: var(--surface-2);
+    border-radius: var(--radius-xs);
+    padding: 8px;
+    text-align: center;
+  }
+  .exif-item .label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
+  .exif-item .value { font-size: 13px; font-weight: 600; margin-top: 2px; }
+
+  .modal-notes {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    background: var(--surface-2);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+  }
+
+  .modal-tier-buttons {
+    display: flex;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    justify-content: center;
+  }
+
+  .modal-nav {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  /* ===== SETTINGS PANEL ===== */
+  .settings-panel {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 320px;
+    height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 150;
+    overflow-y: auto;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.3);
+  }
+  .settings-panel.visible { display: block; }
+
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+  .settings-header h3 { font-size: 14px; }
+
+  .settings-body { padding: 16px; }
+
+  .setting-group { margin-bottom: 20px; }
+  .setting-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .setting-label { font-size: 12px; }
+  .setting-value { font-size: 12px; color: var(--accent-hover); font-weight: 600; min-width: 36px; text-align: right; }
+
+  input[type="range"] {
+    width: 120px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .setting-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .toggle-switch {
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    border: none;
+    background: var(--border);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+  }
+  .toggle-switch.on::after { transform: translateX(16px); }
+
+  /* ===== SIDE-BY-SIDE COMPARE ===== */
+  .compare-panel {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 180;
+    flex-direction: column;
+  }
+  .compare-panel.visible { display: flex; }
+
+  .compare-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .compare-body {
+    flex: 1;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    min-height: 0;
+  }
+
+  .compare-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .compare-side img {
+    flex: 1;
+    object-fit: contain;
+    min-height: 0;
+  }
+  .compare-side-info {
+    padding: 12px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .compare-side-name {
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: auto;
+  }
+
+  /* ===== KEYBOARD HINTS ===== */
+  .keyboard-hints {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    font-size: 11px;
+    color: var(--text-dim);
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .keyboard-hints.visible { opacity: 1; }
+  .kbd {
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-size: 10px;
+    font-family: inherit;
+    color: var(--text);
+  }
+
+  /* ===== EMPTY STATE ===== */
+  .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 768px) {
+    .photo-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .modal { max-width: 100%; margin: 10px; }
+    .settings-panel { width: 100%; }
+    .compare-body { flex-direction: column; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <h1>
+      <span class="logo">&#128247;</span>
+      PhotoCull AI
+      <span class="version-badge">v2</span>
+    </h1>
+    <span class="model-status" id="modelStatus">Loading AI...</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-sm" id="addPhotosBtn" style="display:none" aria-label="Add more photos">+ Add</button>
+    <button class="btn btn-sm" id="compareBtn" style="display:none" title="Compare two photos side-by-side">Compare</button>
+    <button class="btn btn-sm" id="exportBtn" style="display:none">Export CSV</button>
+    <button class="btn btn-sm btn-ghost" id="settingsBtn" aria-label="Settings">&#9881;</button>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" id="toolbar">
+  <div class="stat-group">
+    <div class="stat-item">
+      <span class="stat-count" id="totalCount">0</span>
+      <span class="stat-label">total</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-dot" style="background:var(--keep)"></span>
+      <span class="stat-count" id="keepCount">0</span>
+      <span class="stat-label">keep</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-dot" style="background:var(--maybe)"></span>
+      <span class="stat-count" id="maybeCount">0</span>
+      <span class="stat-label">maybe</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-dot" style="background:var(--reject)"></span>
+      <span class="stat-count" id="rejectCount">0</span>
+      <span class="stat-label">reject</span>
+    </div>
+    <div class="stat-item" id="dupStat" style="display:none">
+      <span class="stat-dot" style="background:var(--accent)"></span>
+      <span class="stat-count" id="dupGroupCount">0</span>
+      <span class="stat-label">groups</span>
+    </div>
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <div class="filter-group">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="keep">Keep</button>
+    <button class="filter-btn" data-filter="maybe">Maybe</button>
+    <button class="filter-btn" data-filter="reject">Reject</button>
+    <button class="filter-btn" data-filter="blink">&#128065; Blinks</button>
+    <button class="filter-btn" data-filter="duplicates">&#128257; Dupes</button>
+  </div>
+
+  <select class="sort-select" id="sortSelect">
+    <option value="score-desc">Score: High → Low</option>
+    <option value="score-asc">Score: Low → High</option>
+    <option value="name-asc">Name: A → Z</option>
+    <option value="name-desc">Name: Z → A</option>
+    <option value="sharpness-desc">Sharpest First</option>
+    <option value="iso-asc">ISO: Low → High</option>
+  </select>
+
+  <div class="view-toggle">
+    <button class="view-btn active" data-view="grid" title="Grid view">&#9638;</button>
+    <button class="view-btn" data-view="large" title="Large grid">&#9641;</button>
+    <button class="view-btn" data-view="filmstrip" title="Filmstrip view">&#9654;</button>
+  </div>
+</div>
+
+<!-- DROPZONE -->
+<div class="main" id="mainArea">
+  <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop photos here or click to browse">
+    <div class="dropzone-icon">&#128247;</div>
+    <h2>Drop your photos here</h2>
+    <p>or click to browse. Supports JPEG, PNG, WebP. Everything stays local.</p>
+    <div class="feature-tags">
+      <span class="feature-tag">&#128065; Eye Focus</span>
+      <span class="feature-tag">&#10024; Catchlights</span>
+      <span class="feature-tag">&#128247; EXIF Analysis</span>
+      <span class="feature-tag">&#128257; Duplicate Detection</span>
+      <span class="feature-tag">&#128566; Blink Detection</span>
+      <span class="feature-tag">&#127912; Composition</span>
+      <span class="feature-tag">&#127912; Color & Vibrance</span>
+    </div>
+  </div>
+
+  <div class="progress-container" id="progressContainer">
+    <div class="progress-header">
+      <span class="progress-label" id="progressLabel">Analyzing...</span>
+      <span class="progress-count" id="progressCount">0 / 0</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-status" id="progressStatus"></div>
+    <div class="progress-phase">
+      <span class="phase-item" id="phaseExif">&#128247; EXIF</span>
+      <span class="phase-item" id="phaseQuality">&#128270; Quality</span>
+      <span class="phase-item" id="phaseFaces">&#128100; Faces</span>
+      <span class="phase-item" id="phaseDups">&#128257; Duplicates</span>
+    </div>
+  </div>
+
+  <div class="photo-grid" id="photoGrid"></div>
+
+  <!-- Filmstrip view -->
+  <div class="filmstrip-container" id="filmstripContainer">
+    <div class="filmstrip-main" id="filmstripMain">
+      <button class="filmstrip-nav prev" id="fsPrev" aria-label="Previous photo">&#8249;</button>
+      <img id="filmstripImage" alt="">
+      <button class="filmstrip-nav next" id="fsNext" aria-label="Next photo">&#8250;</button>
+      <div class="filmstrip-info" id="filmstripInfo">
+        <div>
+          <div id="fsFilename" style="font-size:14px;font-weight:600;margin-bottom:4px"></div>
+          <div id="fsExifLine" style="font-size:11px;color:rgba(255,255,255,0.6)"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="filmstrip-scores" id="fsScores"></div>
+          <div class="filmstrip-tier-btns">
+            <button class="btn btn-sm btn-keep" data-fs-tier="keep">Keep</button>
+            <button class="btn btn-sm btn-maybe" data-fs-tier="maybe">Maybe</button>
+            <button class="btn btn-sm btn-reject" data-fs-tier="reject">Reject</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="filmstrip-strip" id="filmstripStrip"></div>
+  </div>
+</div>
+
+<!-- KEYBOARD HINTS -->
+<div class="keyboard-hints" id="keyboardHints">
+  <span><span class="kbd">&#8592;</span><span class="kbd">&#8594;</span> Navigate</span>
+  <span><span class="kbd">1</span> Keep</span>
+  <span><span class="kbd">2</span> Maybe</span>
+  <span><span class="kbd">3</span> Reject</span>
+  <span><span class="kbd">C</span> Compare</span>
+  <span><span class="kbd">Esc</span> Close</span>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" role="dialog" aria-label="Photo details">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle"></span>
+      <div class="modal-nav">
+        <button class="btn btn-sm btn-ghost" id="modalPrev" aria-label="Previous">&#8249;</button>
+        <button class="btn btn-sm btn-ghost" id="modalNext" aria-label="Next">&#8250;</button>
+      </div>
+      <button class="modal-close" id="modalClose" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-image-container">
+        <img id="modalImage" alt="">
+      </div>
+      <div class="modal-scores-grid" id="detailScores"></div>
+      <div class="modal-section" id="exifSection" style="display:none">
+        <div class="modal-section-title">Camera Settings (EXIF)</div>
+        <div class="exif-grid" id="exifGrid"></div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title">Analysis Notes</div>
+        <div class="modal-notes" id="detailNotes"></div>
+      </div>
+    </div>
+    <div class="modal-tier-buttons">
+      <button class="btn btn-keep" data-set-tier="keep">&#10003; Keep</button>
+      <button class="btn btn-maybe" data-set-tier="maybe">&#9679; Maybe</button>
+      <button class="btn btn-reject" data-set-tier="reject">&#10005; Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMPARE PANEL -->
+<div class="compare-panel" id="comparePanel">
+  <div class="compare-header">
+    <span style="font-size:14px;font-weight:600">Compare Photos</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:11px;color:var(--text-dim)">Click photos in the grid to select 2, then press Compare</span>
+      <button class="btn btn-sm" id="closeCompare">Close</button>
+    </div>
+  </div>
+  <div class="compare-body" id="compareBody"></div>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">
+    <h3>Settings</h3>
+    <button class="modal-close" id="closeSettings" aria-label="Close settings">&#10005;</button>
+  </div>
+  <div class="settings-body">
+    <div class="setting-group">
+      <div class="setting-group-title">Scoring Weights</div>
+      <div class="setting-row">
+        <span class="setting-label">Sharpness</span>
+        <input type="range" id="sharpnessWeight" min="0" max="100" value="28">
+        <span class="setting-value" id="sharpnessWeightVal">28%</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Eye Focus</span>
+        <input type="range" id="eyeFocusWeight" min="0" max="100" value="35">
+        <span class="setting-value" id="eyeFocusWeightVal">35%</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Exposure</span>
+        <input type="range" id="exposureWeight" min="0" max="100" value="12">
+        <span class="setting-value" id="exposureWeightVal">12%</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Catchlight</span>
+        <input type="range" id="catchlightWeight" min="0" max="100" value="10">
+        <span class="setting-value" id="catchlightWeightVal">10%</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Composition</span>
+        <input type="range" id="compositionWeight" min="0" max="100" value="8">
+        <span class="setting-value" id="compositionWeightVal">8%</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Color</span>
+        <input type="range" id="colorWeight" min="0" max="100" value="7">
+        <span class="setting-value" id="colorWeightVal">7%</span>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-title">Thresholds</div>
+      <div class="setting-row">
+        <span class="setting-label">Keep ≥</span>
+        <input type="range" id="keepThresh" min="50" max="95" value="72">
+        <span class="setting-value" id="keepThreshVal">72</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Reject &lt;</span>
+        <input type="range" id="rejectThresh" min="10" max="50" value="35">
+        <span class="setting-value" id="rejectThreshVal">35</span>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-title">Features</div>
+      <div class="setting-toggle">
+        <span class="setting-label">Detect Duplicates</span>
+        <button class="toggle-switch on" id="toggleDups" aria-label="Toggle duplicate detection"></button>
+      </div>
+      <div class="setting-toggle">
+        <span class="setting-label">Blink Detection</span>
+        <button class="toggle-switch on" id="toggleBlink" aria-label="Toggle blink detection"></button>
+      </div>
+      <div class="setting-toggle">
+        <span class="setting-label">EXIF Analysis</span>
+        <button class="toggle-switch on" id="toggleExif" aria-label="Toggle EXIF analysis"></button>
+      </div>
+      <div class="setting-toggle">
+        <span class="setting-label">Composition Scoring</span>
+        <button class="toggle-switch on" id="toggleComposition" aria-label="Toggle composition scoring"></button>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-group-title">Duplicate Sensitivity</div>
+      <div class="setting-row">
+        <span class="setting-label">Similarity threshold</span>
+        <input type="range" id="dupThreshold" min="1" max="20" value="8">
+        <span class="setting-value" id="dupThresholdVal">8</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== STATE ==========
+  let photos = [];
+  let blazefaceModel = null;
+  let currentFilter = 'all';
+  let currentSort = 'score-desc';
+  let currentView = 'grid';
+  let currentModalIndex = -1;
+  let filmstripIndex = 0;
+  let compareSelection = [];
+  let duplicateGroups = [];
+
+  const weights = {
+    sharpness: 0.28,
+    eyeFocus: 0.35,
+    exposure: 0.12,
+    catchlight: 0.10,
+    composition: 0.08,
+    color: 0.07
+  };
+
+  let keepThreshold = 72;
+  let rejectThreshold = 35;
+
+  const features = {
+    duplicates: true,
+    blink: true,
+    exif: true,
+    composition: true
+  };
+
+  let dupSensitivity = 8;
+
+  // ========== DOM REFS ==========
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const toolbar = document.getElementById('toolbar');
+  const photoGrid = document.getElementById('photoGrid');
+  const progressContainer = document.getElementById('progressContainer');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressCount = document.getElementById('progressCount');
+  const progressFill = document.getElementById('progressFill');
+  const progressStatus = document.getElementById('progressStatus');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalImage = document.getElementById('modalImage');
+  const detailScores = document.getElementById('detailScores');
+  const detailNotes = document.getElementById('detailNotes');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const exportBtn = document.getElementById('exportBtn');
+  const modelStatus = document.getElementById('modelStatus');
+  const filmstripContainer = document.getElementById('filmstripContainer');
+  const keyboardHints = document.getElementById('keyboardHints');
+
+  // ========== LOAD AI MODEL ==========
+  async function loadModel() {
+    try {
+      await tf.ready();
+      blazefaceModel = await blazeface.load();
+      modelStatus.textContent = 'AI Ready';
+      modelStatus.classList.add('ready');
+    } catch (err) {
+      console.error('Model load error:', err);
+      modelStatus.textContent = 'AI unavailable — basic analysis only';
+      modelStatus.classList.add('error');
+    }
+  }
+  loadModel();
+
+  // ========== FILE HANDLING ==========
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+  document.getElementById('addPhotosBtn').addEventListener('click', () => fileInput.click());
+
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+    if (files.length) processFiles(files);
+  });
+  fileInput.addEventListener('change', () => {
+    const files = [...fileInput.files];
+    if (files.length) processFiles(files);
+    fileInput.value = '';
+  });
+
+  // ========== EXIF PARSING (inline, no external lib) ==========
+  // Minimal EXIF parser for JPEG: reads IFD0 + ExifIFD tags we care about
+  function parseExif(arrayBuffer) {
+    const view = new DataView(arrayBuffer);
+    const exif = {};
+
+    // Check JPEG SOI
+    if (view.getUint16(0) !== 0xFFD8) return exif;
+
+    let offset = 2;
+    while (offset < view.byteLength - 4) {
+      const marker = view.getUint16(offset);
+      if (marker === 0xFFE1) { // APP1 = EXIF
+        const length = view.getUint16(offset + 2);
+        const exifStart = offset + 4;
+
+        // Check "Exif\0\0"
+        if (view.getUint32(exifStart) === 0x45786966 && view.getUint16(exifStart + 4) === 0x0000) {
+          const tiffStart = exifStart + 6;
+          const bo = view.getUint16(tiffStart); // byte order
+          const le = bo === 0x4949; // little endian
+
+          const getU16 = (o) => view.getUint16(tiffStart + o, le);
+          const getU32 = (o) => view.getUint32(tiffStart + o, le);
+          const getR = (o) => {
+            const num = view.getUint32(tiffStart + o, le);
+            const den = view.getUint32(tiffStart + o + 4, le);
+            return den ? num / den : 0;
+          };
+
+          function readIFD(ifdOffset) {
+            try {
+              const count = getU16(ifdOffset);
+              for (let i = 0; i < count; i++) {
+                const entryOff = ifdOffset + 2 + i * 12;
+                const tag = getU16(entryOff);
+                const type = getU16(entryOff + 2);
+                const valOff = entryOff + 8;
+
+                // Tags we want:
+                // 0x010F Make, 0x0110 Model, 0x829A ExposureTime, 0x829D FNumber
+                // 0x8827 ISO, 0x920A FocalLength, 0x9003 DateTimeOriginal
+                // 0x8769 ExifIFD pointer
+                if (tag === 0x8769) {
+                  // ExifIFD pointer
+                  const exifIFDOffset = getU32(valOff);
+                  readIFD(exifIFDOffset);
+                } else if (tag === 0x829A) { // ExposureTime (RATIONAL)
+                  const o = getU32(valOff);
+                  const num = view.getUint32(tiffStart + o, le);
+                  const den = view.getUint32(tiffStart + o + 4, le);
+                  exif.exposureTime = den ? num / den : 0;
+                  exif.exposureTimeStr = den > num ? `1/${Math.round(den/num)}` : `${(num/den).toFixed(1)}`;
+                } else if (tag === 0x829D) { // FNumber
+                  const o = getU32(valOff);
+                  exif.fNumber = getR(o);
+                } else if (tag === 0x8827) { // ISO
+                  exif.iso = type === 3 ? getU16(valOff) : getU32(valOff);
+                } else if (tag === 0x920A) { // FocalLength
+                  const o = getU32(valOff);
+                  exif.focalLength = getR(o);
+                } else if (tag === 0x010F) { // Make
+                  if (type === 2) {
+                    const cnt = getU32(entryOff + 4);
+                    const sOff = cnt <= 4 ? valOff : getU32(valOff);
+                    let s = '';
+                    for (let j = 0; j < Math.min(cnt - 1, 30); j++) {
+                      const c = view.getUint8(tiffStart + sOff + j);
+                      if (c === 0) break;
+                      s += String.fromCharCode(c);
+                    }
+                    exif.make = s.trim();
+                  }
+                } else if (tag === 0x0110) { // Model
+                  if (type === 2) {
+                    const cnt = getU32(entryOff + 4);
+                    const sOff = cnt <= 4 ? valOff : getU32(valOff);
+                    let s = '';
+                    for (let j = 0; j < Math.min(cnt - 1, 50); j++) {
+                      const c = view.getUint8(tiffStart + sOff + j);
+                      if (c === 0) break;
+                      s += String.fromCharCode(c);
+                    }
+                    exif.model = s.trim();
+                  }
+                }
+              }
+            } catch(e) { /* malformed EXIF, skip */ }
+          }
+
+          const firstIFDOffset = getU32(4);
+          readIFD(firstIFDOffset);
+        }
+        break; // only process first APP1
+      } else if ((marker & 0xFF00) === 0xFF00) {
+        offset += 2 + view.getUint16(offset + 2);
+      } else {
+        break;
+      }
+    }
+
+    return exif;
+  }
+
+  // EXIF quality scoring: ISO, shutter speed, aperture
+  function scoreExif(exif) {
+    let score = 70; // neutral baseline
+    let signals = 0;
+
+    // ISO: lower is better (less noise)
+    if (exif.iso) {
+      signals++;
+      if (exif.iso <= 200) score += 15;
+      else if (exif.iso <= 800) score += 8;
+      else if (exif.iso <= 1600) score += 0;
+      else if (exif.iso <= 3200) score -= 8;
+      else if (exif.iso <= 6400) score -= 15;
+      else score -= 25;
+    }
+
+    // Shutter speed: too slow = motion blur risk
+    if (exif.exposureTime) {
+      signals++;
+      if (exif.exposureTime <= 1/500) score += 8;
+      else if (exif.exposureTime <= 1/125) score += 4;
+      else if (exif.exposureTime <= 1/60) score += 0;
+      else if (exif.exposureTime <= 1/30) score -= 5;
+      else if (exif.exposureTime <= 1/8) score -= 12;
+      else score -= 20;
+    }
+
+    // Aperture: sweet spot is f/2.8 - f/8 for sharpness
+    if (exif.fNumber) {
+      signals++;
+      if (exif.fNumber >= 2.8 && exif.fNumber <= 8) score += 5;
+      else if (exif.fNumber >= 1.4 && exif.fNumber <= 11) score += 2;
+      else score -= 3;
+    }
+
+    return { score: Math.min(100, Math.max(0, Math.round(score))), signals };
+  }
+
+  // ========== PERCEPTUAL HASH (dHash) FOR DUPLICATE DETECTION ==========
+  function computeDHash(ctx, w, h) {
+    // Resize to 9x8 grayscale for dHash
+    const smallCanvas = document.createElement('canvas');
+    smallCanvas.width = 9;
+    smallCanvas.height = 8;
+    const sCtx = smallCanvas.getContext('2d');
+    sCtx.drawImage(ctx.canvas, 0, 0, 9, 8);
+    const data = sCtx.getImageData(0, 0, 9, 8).data;
+
+    // Convert to grayscale
+    const gray = [];
+    for (let i = 0; i < 9 * 8; i++) {
+      gray.push(0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2]);
+    }
+
+    // Compute difference hash: compare adjacent pixels horizontally
+    // 8x8 = 64 bits
+    let hash = '';
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        hash += gray[y * 9 + x] < gray[y * 9 + (x + 1)] ? '1' : '0';
+      }
+    }
+
+    return hash;
+  }
+
+  function hammingDistance(h1, h2) {
+    let dist = 0;
+    for (let i = 0; i < h1.length; i++) {
+      if (h1[i] !== h2[i]) dist++;
+    }
+    return dist;
+  }
+
+  function findDuplicateGroups() {
+    duplicateGroups = [];
+    if (!features.duplicates) return;
+
+    const assigned = new Set();
+
+    for (let i = 0; i < photos.length; i++) {
+      if (assigned.has(i) || !photos[i].dHash) continue;
+
+      const group = [i];
+      for (let j = i + 1; j < photos.length; j++) {
+        if (assigned.has(j) || !photos[j].dHash) continue;
+        const dist = hammingDistance(photos[i].dHash, photos[j].dHash);
+        if (dist <= dupSensitivity) {
+          group.push(j);
+        }
+      }
+
+      if (group.length > 1) {
+        // Mark all in group
+        group.forEach(idx => assigned.add(idx));
+        // Find best in group (highest overall score)
+        const bestIdx = group.reduce((best, idx) =>
+          photos[idx].overallScore > photos[best].overallScore ? idx : best, group[0]);
+
+        duplicateGroups.push({ indices: group, bestIdx });
+        group.forEach(idx => {
+          photos[idx].dupGroupId = duplicateGroups.length - 1;
+          photos[idx].isDupBest = idx === bestIdx;
+        });
+      }
+    }
+  }
+
+  // ========== IMAGE ANALYSIS FUNCTIONS ==========
+
+  function createCanvasFromImage(img, maxSize) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let w = img.naturalWidth || img.width;
+    let h = img.naturalHeight || img.height;
+    if (maxSize && (w > maxSize || h > maxSize)) {
+      const scale = maxSize / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+    canvas.width = w;
+    canvas.height = h;
+    ctx.drawImage(img, 0, 0, w, h);
+    return { canvas, ctx, w, h };
+  }
+
+  // Sharpness via Tenengrad (thresholded Sobel with Gaussian pre-smooth)
+  function analyzeSharpness(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const gray = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const idx = i * 4;
+      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+    }
+
+    // 5x5 Gaussian pre-smooth
+    const K = [1, 4, 6, 4, 1];
+    const KS = 16;
+    const temp = new Float32Array(w * h);
+    const presmooth = new Float32Array(w * h);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 2; x < w - 2; x++) {
+        temp[y * w + x] = (K[0]*gray[y*w+(x-2)] + K[1]*gray[y*w+(x-1)]
+          + K[2]*gray[y*w+x] + K[3]*gray[y*w+(x+1)] + K[4]*gray[y*w+(x+2)]) / KS;
+      }
+    }
+    for (let y = 2; y < h - 2; y++) {
+      for (let x = 2; x < w - 2; x++) {
+        presmooth[y * w + x] = (K[0]*temp[(y-2)*w+x] + K[1]*temp[(y-1)*w+x]
+          + K[2]*temp[y*w+x] + K[3]*temp[(y+1)*w+x] + K[4]*temp[(y+2)*w+x]) / KS;
+      }
+    }
+
+    let aboveThreshSum = 0, aboveThreshCount = 0, count = 0;
+    const NOISE_THRESH = 10;
+
+    for (let y = 3; y < h - 3; y++) {
+      for (let x = 3; x < w - 3; x++) {
+        const gx = -presmooth[(y-1)*w+(x-1)] + presmooth[(y-1)*w+(x+1)]
+                    -2*presmooth[y*w+(x-1)] + 2*presmooth[y*w+(x+1)]
+                    -presmooth[(y+1)*w+(x-1)] + presmooth[(y+1)*w+(x+1)];
+        const gy = -presmooth[(y-1)*w+(x-1)] - 2*presmooth[(y-1)*w+x] - presmooth[(y-1)*w+(x+1)]
+                    +presmooth[(y+1)*w+(x-1)] + 2*presmooth[(y+1)*w+x] + presmooth[(y+1)*w+(x+1)];
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        count++;
+        if (mag > NOISE_THRESH) {
+          aboveThreshSum += mag * mag;
+          aboveThreshCount++;
+        }
+      }
+    }
+
+    const tenengrad = aboveThreshCount > 0 ? aboveThreshSum / count : 0;
+    const edgeDensity = count > 0 ? aboveThreshCount / count : 0;
+    const rawScore = Math.log(1 + tenengrad) * 4.46 + edgeDensity * 20.07;
+    return { score: Math.round(Math.min(100, Math.max(0, rawScore))), variance: Math.round(tenengrad) };
+  }
+
+  // Exposure via histogram
+  function analyzeExposure(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const histogram = new Array(256).fill(0);
+    const totalPixels = w * h;
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 4;
+      histogram[Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2])]++;
+    }
+
+    let sumB = 0;
+    for (let i = 0; i < 256; i++) sumB += i * histogram[i];
+    const meanBrightness = sumB / totalPixels;
+
+    let shadowClip = 0, highlightClip = 0;
+    for (let i = 0; i < 10; i++) shadowClip += histogram[i];
+    for (let i = 246; i < 256; i++) highlightClip += histogram[i];
+    const shadowClipPct = shadowClip / totalPixels;
+    const highlightClipPct = highlightClip / totalPixels;
+
+    let p5 = 0, p95 = 0, acc = 0;
+    for (let i = 0; i < 256; i++) {
+      acc += histogram[i];
+      if (!p5 && acc >= totalPixels * 0.05) p5 = i;
+      if (!p95 && acc >= totalPixels * 0.95) p95 = i;
+    }
+    const dynamicRange = p95 - p5;
+
+    let score = 100;
+    score -= Math.abs(meanBrightness - 128) * 0.83;
+    score -= shadowClipPct * 50.1;
+    score -= highlightClipPct * 50.1;
+    if (dynamicRange < 100) score -= (100 - dynamicRange) * 0.40;
+    score = Math.min(100, Math.max(0, score));
+
+    return {
+      score: Math.round(score),
+      meanBrightness: Math.round(meanBrightness),
+      shadowClip: (shadowClipPct * 100).toFixed(1),
+      highlightClip: (highlightClipPct * 100).toFixed(1),
+      dynamicRange
+    };
+  }
+
+  // Noise via local-mean residual
+  function analyzeNoise(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const sx = Math.floor(w * 0.25), sy = Math.floor(h * 0.25);
+    const ex = Math.floor(w * 0.75), ey = Math.floor(h * 0.75);
+    const rw = ex - sx, rh = ey - sy;
+
+    const gray = new Float32Array(rw * rh);
+    for (let ry = 0; ry < rh; ry++) {
+      for (let rx = 0; rx < rw; rx++) {
+        const idx = ((sy + ry) * w + (sx + rx)) * 4;
+        gray[ry * rw + rx] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      }
+    }
+
+    let residualSumSq = 0, residualCount = 0;
+    for (let ry = 1; ry < rh - 1; ry += 2) {
+      for (let rx = 1; rx < rw - 1; rx += 2) {
+        let localSum = 0;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++)
+            localSum += gray[(ry + dy) * rw + (rx + dx)];
+        const residual = gray[ry * rw + rx] - localSum / 9;
+        residualSumSq += residual * residual;
+        residualCount++;
+      }
+    }
+
+    const noiseStd = Math.sqrt(residualCount > 0 ? residualSumSq / residualCount : 0);
+    return { score: Math.round(Math.min(100, Math.max(0, 100 - noiseStd * 1.96))), noiseLevel: noiseStd.toFixed(1) };
+  }
+
+  // ========== COMPOSITION ANALYSIS ==========
+  function analyzeComposition(ctx, w, h, faceData) {
+    let score = 50; // baseline neutral
+
+    // Rule of thirds analysis
+    const third_x1 = w / 3, third_x2 = 2 * w / 3;
+    const third_y1 = h / 3, third_y2 = 2 * h / 3;
+    const powerPoints = [
+      [third_x1, third_y1], [third_x2, third_y1],
+      [third_x1, third_y2], [third_x2, third_y2]
+    ];
+
+    if (faceData && faceData.hasFaces && faceData.faces.length > 0) {
+      // For portraits: check if face/eyes are near power points or thirds lines
+      const mainFace = faceData.faces[0];
+      const faceCenter = [
+        (mainFace.topLeft[0] + mainFace.bottomRight[0]) / 2,
+        (mainFace.topLeft[1] + mainFace.bottomRight[1]) / 2
+      ];
+
+      // Distance to nearest power point (normalized to image diagonal)
+      const diag = Math.sqrt(w * w + h * h);
+      let minDist = Infinity;
+      for (const pp of powerPoints) {
+        const d = Math.sqrt((faceCenter[0] - pp[0])**2 + (faceCenter[1] - pp[1])**2);
+        if (d < minDist) minDist = d;
+      }
+      const normDist = minDist / diag;
+      // Closer to power point = better composition
+      score += Math.round(30 * Math.max(0, 1 - normDist * 4));
+
+      // Head room check: face shouldn't be cut off at top
+      const faceTop = mainFace.topLeft[1];
+      const headRoom = faceTop / h;
+      if (headRoom < 0.02) score -= 15; // face touching top edge
+      else if (headRoom < 0.08) score -= 5;
+      else if (headRoom > 0.15 && headRoom < 0.35) score += 5; // good headroom
+
+      // Face not too centered (centered can be fine but rule of thirds is often better)
+      const centerDist = Math.abs(faceCenter[0] / w - 0.5);
+      if (centerDist > 0.05 && centerDist < 0.25) score += 5; // off-center but not extreme
+
+      // Check if face fills appropriate amount of frame
+      const faceW = mainFace.bottomRight[0] - mainFace.topLeft[0];
+      const faceH = mainFace.bottomRight[1] - mainFace.topLeft[1];
+      const faceFill = (faceW * faceH) / (w * h);
+      if (faceFill > 0.02 && faceFill < 0.4) score += 5; // reasonable face size
+    } else {
+      // For landscapes: check visual weight distribution
+      const data = ctx.getImageData(0, 0, w, h).data;
+
+      // Check if horizon roughly on a thirds line by analyzing brightness change
+      const rowBrightness = [];
+      const step = Math.max(1, Math.floor(h / 20));
+      for (let y = 0; y < h; y += step) {
+        let rowSum = 0, rowCount = 0;
+        for (let x = 0; x < w; x += 4) {
+          const idx = (y * w + x) * 4;
+          rowSum += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+          rowCount++;
+        }
+        rowBrightness.push(rowSum / rowCount);
+      }
+
+      // Find biggest brightness transition (likely horizon)
+      let maxDiff = 0, horizonY = h / 2;
+      for (let i = 1; i < rowBrightness.length; i++) {
+        const diff = Math.abs(rowBrightness[i] - rowBrightness[i - 1]);
+        if (diff > maxDiff) {
+          maxDiff = diff;
+          horizonY = i * step;
+        }
+      }
+
+      // Check if horizon is near a thirds line
+      const horizonRatio = horizonY / h;
+      if (Math.abs(horizonRatio - 1/3) < 0.08 || Math.abs(horizonRatio - 2/3) < 0.08) {
+        score += 20;
+      } else if (Math.abs(horizonRatio - 0.5) < 0.05) {
+        score += 5; // centered can work but less interesting
+      }
+
+      // Dynamic range of scene suggests interesting composition
+      const brightVals = rowBrightness.filter(b => b > 0);
+      if (brightVals.length > 2) {
+        const range = Math.max(...brightVals) - Math.min(...brightVals);
+        if (range > 60) score += 10; // good tonal variety
+      }
+    }
+
+    return { score: Math.min(100, Math.max(0, Math.round(score))) };
+  }
+
+  // ========== COLOR & VIBRANCE ANALYSIS ==========
+  function analyzeColor(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const totalPixels = w * h;
+
+    let totalSat = 0;
+    let totalVibrance = 0;
+
+    // Sample for speed (every 4th pixel)
+    let sampleCount = 0;
+    for (let i = 0; i < totalPixels; i += 4) {
+      const idx = i * 4;
+      const r = data[idx] / 255;
+      const g = data[idx + 1] / 255;
+      const b = data[idx + 2] / 255;
+
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      const d = max - min;
+
+      // Saturation (HSL)
+      const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+      totalSat += sat;
+
+      // Vibrance approximation: weight low-saturation pixels more
+      // (vibrance boosts muted colors, not already-saturated ones)
+      totalVibrance += sat * (1 - sat);
+      sampleCount++;
+    }
+
+    const avgSat = sampleCount > 0 ? totalSat / sampleCount : 0;
+    const avgVibrance = sampleCount > 0 ? totalVibrance / sampleCount : 0;
+
+    // Color score: moderate saturation is good (0.15-0.5), extreme is bad
+    let score = 50;
+    if (avgSat >= 0.12 && avgSat <= 0.55) score += 30;
+    else if (avgSat >= 0.05 && avgSat <= 0.70) score += 15;
+    else if (avgSat < 0.05) score -= 10; // very desaturated
+    else score -= 15; // oversaturated
+
+    // Vibrance bonus
+    if (avgVibrance > 0.05) score += 10;
+    if (avgVibrance > 0.10) score += 5;
+
+    // Check for color cast (white balance issue)
+    let totalR = 0, totalG = 0, totalB = 0;
+    for (let i = 0; i < totalPixels; i += 8) {
+      const idx = i * 4;
+      totalR += data[idx];
+      totalG += data[idx + 1];
+      totalB += data[idx + 2];
+    }
+    const sCount = Math.ceil(totalPixels / 8);
+    const avgR = totalR / sCount;
+    const avgG = totalG / sCount;
+    const avgB = totalB / sCount;
+    const avgAll = (avgR + avgG + avgB) / 3;
+
+    // Strong color cast = one channel far from average
+    const maxDev = Math.max(Math.abs(avgR - avgAll), Math.abs(avgG - avgAll), Math.abs(avgB - avgAll));
+    if (maxDev > 30) score -= 10; // noticeable color cast
+    if (maxDev > 50) score -= 10; // strong color cast
+
+    return {
+      score: Math.min(100, Math.max(0, Math.round(score))),
+      saturation: (avgSat * 100).toFixed(0),
+      colorCast: maxDev > 30
+    };
+  }
+
+  // ========== BLINK DETECTION ==========
+  // Uses eye region variance: closed eyes have uniform skin texture (low variance),
+  // open eyes have high contrast from iris/pupil/sclera/catchlight
+  function detectBlink(ctx, landmark, imgW, imgH) {
+    const eyeX = Math.round(landmark[0]);
+    const eyeY = Math.round(landmark[1]);
+    const regionSize = Math.max(8, Math.round(Math.min(imgW, imgH) * 0.025));
+    const x1 = Math.max(0, eyeX - regionSize);
+    const y1 = Math.max(0, eyeY - regionSize);
+    const x2 = Math.min(imgW, eyeX + regionSize);
+    const y2 = Math.min(imgH, eyeY + regionSize);
+    const rw = x2 - x1, rh = y2 - y1;
+    if (rw < 4 || rh < 4) return { closed: false, confidence: 0 };
+
+    const data = ctx.getImageData(x1, y1, rw, rh).data;
+    const totalPixels = rw * rh;
+
+    // Analyze: open eyes have high local contrast (iris dark, sclera white, pupil dark)
+    // Closed eyes have relatively uniform skin-colored pixels
+    let minLum = 255, maxLum = 0;
+    let sumLum = 0;
+    const lums = [];
+
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 4;
+      const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      lums.push(lum);
+      sumLum += lum;
+      if (lum < minLum) minLum = lum;
+      if (lum > maxLum) maxLum = lum;
+    }
+
+    const meanLum = sumLum / totalPixels;
+    let variance = 0;
+    for (const l of lums) variance += (l - meanLum) ** 2;
+    variance /= totalPixels;
+
+    const contrast = maxLum - minLum;
+    const std = Math.sqrt(variance);
+
+    // Heuristic: open eyes typically have std > 25, contrast > 80
+    // Closed eyes: std < 15, contrast < 50
+    let closedScore = 0;
+    if (std < 12) closedScore += 40;
+    else if (std < 18) closedScore += 20;
+    else if (std > 30) closedScore -= 30;
+
+    if (contrast < 40) closedScore += 30;
+    else if (contrast < 60) closedScore += 10;
+    else if (contrast > 100) closedScore -= 20;
+
+    // Check for dark pupil presence (very dark pixels in center)
+    const centerRegion = [];
+    const cx = Math.floor(rw / 2), cy = Math.floor(rh / 2);
+    const cr = Math.max(2, Math.floor(Math.min(rw, rh) / 4));
+    for (let dy = -cr; dy <= cr; dy++) {
+      for (let dx = -cr; dx <= cr; dx++) {
+        const px = cx + dx, py = cy + dy;
+        if (px >= 0 && px < rw && py >= 0 && py < rh) {
+          centerRegion.push(lums[py * rw + px]);
+        }
+      }
+    }
+
+    if (centerRegion.length > 0) {
+      const darkPixels = centerRegion.filter(l => l < 60).length;
+      const darkRatio = darkPixels / centerRegion.length;
+      if (darkRatio > 0.3) closedScore -= 25; // pupil likely visible = open eye
+      if (darkRatio < 0.05) closedScore += 15; // no dark center = likely closed
+    }
+
+    const isClosed = closedScore > 25;
+    const confidence = Math.min(100, Math.max(0, Math.abs(closedScore) * 2));
+
+    return { closed: isClosed, confidence };
+  }
+
+  // ========== EYE REGION ANALYSIS (sharpness + catchlight) ==========
+  function analyzeEyeRegion(ctx, landmark, imgW, imgH, globalSharpnessVar) {
+    const eyeX = Math.round(landmark[0]);
+    const eyeY = Math.round(landmark[1]);
+    const regionSize = Math.max(12, Math.round(Math.min(imgW, imgH) * 0.04));
+    const x1 = Math.max(0, eyeX - regionSize);
+    const y1 = Math.max(0, eyeY - regionSize);
+    const x2 = Math.min(imgW, eyeX + regionSize);
+    const y2 = Math.min(imgH, eyeY + regionSize);
+    const rw = x2 - x1, rh = y2 - y1;
+
+    if (rw < 4 || rh < 4) return { focusScore: 50, catchlightScore: 0 };
+
+    const data = ctx.getImageData(x1, y1, rw, rh).data;
+    const gray = new Float32Array(rw * rh);
+    for (let i = 0; i < rw * rh; i++) {
+      const idx = i * 4;
+      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+    }
+
+    // Pre-smooth
+    const eyeSmooth = new Float32Array(rw * rh);
+    for (let y = 1; y < rh - 1; y++) {
+      for (let x = 1; x < rw - 1; x++) {
+        let s = 0;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++)
+            s += gray[(y + dy) * rw + (x + dx)];
+        eyeSmooth[y * rw + x] = s / 9;
+      }
+    }
+
+    // Tenengrad
+    let aboveThreshSum = 0, aboveThreshCount = 0, eyeCount = 0;
+    for (let y = 2; y < rh - 2; y++) {
+      for (let x = 2; x < rw - 2; x++) {
+        const gx = -eyeSmooth[(y-1)*rw+(x-1)] + eyeSmooth[(y-1)*rw+(x+1)]
+                    -2*eyeSmooth[y*rw+(x-1)] + 2*eyeSmooth[y*rw+(x+1)]
+                    -eyeSmooth[(y+1)*rw+(x-1)] + eyeSmooth[(y+1)*rw+(x+1)];
+        const gy = -eyeSmooth[(y-1)*rw+(x-1)] - 2*eyeSmooth[(y-1)*rw+x] - eyeSmooth[(y-1)*rw+(x+1)]
+                    +eyeSmooth[(y+1)*rw+(x-1)] + 2*eyeSmooth[(y+1)*rw+x] + eyeSmooth[(y+1)*rw+(x+1)];
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        eyeCount++;
+        if (mag > 10) { aboveThreshSum += mag * mag; aboveThreshCount++; }
+      }
+    }
+
+    const localTenengrad = eyeCount > 0 ? aboveThreshSum / eyeCount : 0;
+    const localEdgeDensity = eyeCount > 0 ? aboveThreshCount / eyeCount : 0;
+
+    let focusScore = Math.min(100, Math.max(0,
+      Math.log(1 + localTenengrad) * 4.22 + localEdgeDensity * 20.14));
+
+    if (globalSharpnessVar > 0 && localTenengrad > globalSharpnessVar * 1.5) {
+      focusScore = Math.min(100, focusScore * 1.25);
+    }
+    if (globalSharpnessVar > 10 && localTenengrad < globalSharpnessVar * 0.3) {
+      focusScore *= 0.4;
+    }
+
+    const globalSharpnessScore = Math.min(100, Math.max(0,
+      Math.log(1 + globalSharpnessVar) * 4.63 + 5.55));
+    focusScore = Math.min(focusScore, globalSharpnessScore + 15);
+
+    // Catchlight detection
+    const totalPixels = rw * rh;
+    const sorted = [...gray].sort((a, b) => a - b);
+    const medianLum = sorted[Math.floor(totalPixels / 2)];
+
+    let specularPixels = 0, maxBrightness = 0;
+    for (let i = 0; i < totalPixels; i++) {
+      if (gray[i] > maxBrightness) maxBrightness = gray[i];
+      if (gray[i] > 240) specularPixels++;
+    }
+
+    const specularRatio = specularPixels / totalPixels;
+    const contrastWithMedian = maxBrightness - medianLum;
+
+    let catchlightScore = 0;
+    if (specularRatio >= 0.001 && specularRatio <= 0.05
+        && maxBrightness > 245 && contrastWithMedian > 100) {
+      catchlightScore = 100;
+    } else if (specularRatio >= 0.001 && specularRatio <= 0.08
+        && maxBrightness > 240 && contrastWithMedian > 80) {
+      catchlightScore = 70;
+    } else if (maxBrightness > 230 && contrastWithMedian > 60) {
+      catchlightScore = 30;
+    }
+    if (specularRatio > 0.10) catchlightScore = Math.min(catchlightScore, 20);
+
+    return { focusScore: Math.round(focusScore), catchlightScore: Math.round(catchlightScore) };
+  }
+
+  // ========== MAIN ANALYSIS PIPELINE ==========
+  async function analyzePhoto(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (readerEvent) => {
+        const arrayBuffer = readerEvent.target.result;
+
+        // Parse EXIF
+        let exif = {};
+        if (features.exif) {
+          try { exif = parseExif(arrayBuffer); } catch(e) {}
+        }
+
+        const img = new Image();
+        const blob = new Blob([arrayBuffer], { type: file.type });
+        const url = URL.createObjectURL(blob);
+
+        img.onload = async () => {
+          const { canvas, ctx, w, h } = createCanvasFromImage(img, 800);
+
+          // Core metrics
+          const sharpness = analyzeSharpness(ctx, w, h);
+          const exposure = analyzeExposure(ctx, w, h);
+          const noise = analyzeNoise(ctx, w, h);
+          const color = analyzeColor(ctx, w, h);
+
+          // Composition (needs face data, so we'll update after face detection)
+          let composition = { score: 50 };
+
+          // dHash for duplicate detection
+          let dHash = null;
+          if (features.duplicates) {
+            dHash = computeDHash(ctx, w, h);
+          }
+
+          // EXIF scoring
+          let exifScore = { score: 70, signals: 0 };
+          if (features.exif && Object.keys(exif).length > 0) {
+            exifScore = scoreExif(exif);
+          }
+
+          let faceData = { hasFaces: false, faceCount: 0, eyeFocus: 0, catchlight: 0, faces: [], blinkDetected: false };
+
+          // Face detection
+          if (blazefaceModel) {
+            try {
+              const predictions = await blazefaceModel.estimateFaces(canvas, false);
+              if (predictions.length > 0) {
+                faceData.hasFaces = true;
+                faceData.faceCount = predictions.length;
+                let bestEyeFocus = 0, bestCatchlight = 0;
+                let anyBlink = false;
+
+                for (const pred of predictions) {
+                  const rightEye = pred.landmarks[0];
+                  const leftEye = pred.landmarks[1];
+
+                  const rEye = analyzeEyeRegion(ctx, rightEye, w, h, sharpness.variance);
+                  const lEye = analyzeEyeRegion(ctx, leftEye, w, h, sharpness.variance);
+
+                  const avgFocus = (rEye.focusScore + lEye.focusScore) / 2;
+                  const avgCatchlight = (rEye.catchlightScore + lEye.catchlightScore) / 2;
+
+                  if (avgFocus > bestEyeFocus) bestEyeFocus = avgFocus;
+                  if (avgCatchlight > bestCatchlight) bestCatchlight = avgCatchlight;
+
+                  // Blink detection
+                  let blinkResult = { closed: false };
+                  if (features.blink) {
+                    const rBlink = detectBlink(ctx, rightEye, w, h);
+                    const lBlink = detectBlink(ctx, leftEye, w, h);
+                    if (rBlink.closed || lBlink.closed) {
+                      anyBlink = true;
+                      blinkResult.closed = true;
+                    }
+                  }
+
+                  faceData.faces.push({
+                    topLeft: pred.topLeft,
+                    bottomRight: pred.bottomRight,
+                    eyeFocus: avgFocus,
+                    catchlight: avgCatchlight,
+                    probability: pred.probability ? pred.probability[0] : null,
+                    blink: blinkResult.closed
+                  });
+                }
+
+                faceData.eyeFocus = Math.round(bestEyeFocus);
+                faceData.catchlight = Math.round(bestCatchlight);
+                faceData.blinkDetected = anyBlink;
+              }
+            } catch (err) { console.error('Face detection error:', err); }
+          }
+
+          // Composition (now with face data)
+          if (features.composition) {
+            composition = analyzeComposition(ctx, w, h, faceData);
+          }
+
+          // Thumbnail
+          const thumbCanvas = document.createElement('canvas');
+          const thumbCtx = thumbCanvas.getContext('2d');
+          const thumbSize = 480;
+          let tw = img.naturalWidth, th = img.naturalHeight;
+          const scale = thumbSize / Math.max(tw, th);
+          tw = Math.round(tw * scale);
+          th = Math.round(th * scale);
+          thumbCanvas.width = tw;
+          thumbCanvas.height = th;
+          thumbCtx.drawImage(img, 0, 0, tw, th);
+          const thumbnailUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
+          URL.revokeObjectURL(url);
+
+          resolve({
+            file,
+            filename: file.name,
+            fileSize: file.size,
+            dimensions: { w: img.naturalWidth, h: img.naturalHeight },
+            thumbnailUrl,
+            fullUrl: null,
+            sharpness,
+            exposure,
+            noise,
+            color,
+            composition,
+            exif,
+            exifScore,
+            face: faceData,
+            dHash,
+            dupGroupId: -1,
+            isDupBest: false,
+            overallScore: 0,
+            tier: 'maybe',
+            manualTier: null
+          });
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        };
+        img.src = url;
+      };
+
+      reader.onerror = () => resolve(null);
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // ========== SCORING ==========
+  function calculateOverallScore(photo) {
+    const hasPortrait = photo.face.hasFaces;
+
+    let score;
+    if (hasPortrait) {
+      score = photo.sharpness.score * weights.sharpness
+            + photo.face.eyeFocus * weights.eyeFocus
+            + photo.exposure.score * weights.exposure
+            + photo.face.catchlight * weights.catchlight
+            + photo.composition.score * weights.composition
+            + photo.color.score * weights.color;
+    } else {
+      // Non-portrait: redistribute eye/catchlight to other metrics
+      const totalRedist = weights.eyeFocus + weights.catchlight;
+      const adjSharpness = weights.sharpness + totalRedist * 0.4;
+      const adjExposure = weights.exposure + totalRedist * 0.2;
+      const adjComposition = weights.composition + totalRedist * 0.25;
+      const adjColor = weights.color + totalRedist * 0.15;
+
+      score = photo.sharpness.score * adjSharpness
+            + photo.exposure.score * adjExposure
+            + photo.composition.score * adjComposition
+            + photo.color.score * adjColor;
+    }
+
+    // EXIF bonus/penalty (subtle — trust camera settings)
+    if (photo.exifScore.signals > 0) {
+      const exifDelta = (photo.exifScore.score - 70) * 0.15;
+      score += exifDelta;
+    }
+
+    // Blink penalty
+    if (photo.face.blinkDetected) {
+      score -= 20;
+    }
+
+    return Math.round(Math.min(100, Math.max(0, score)));
+  }
+
+  function assignTier(score) {
+    if (score >= keepThreshold) return 'keep';
+    if (score >= rejectThreshold) return 'maybe';
+    return 'reject';
+  }
+
+  // ========== PROCESS FILES ==========
+  async function processFiles(files) {
+    dropzone.style.display = 'none';
+    progressContainer.classList.add('visible');
+    toolbar.classList.add('visible');
+
+    const total = files.length;
+    let processed = 0;
+
+    const setPhase = (phase) => {
+      ['phaseExif', 'phaseQuality', 'phaseFaces', 'phaseDups'].forEach(id => {
+        document.getElementById(id).className = 'phase-item';
+      });
+      if (phase) document.getElementById(phase).classList.add('active');
+    };
+
+    progressLabel.textContent = 'Analyzing photos...';
+    progressCount.textContent = `0 / ${total}`;
+    progressFill.style.width = '0%';
+    setPhase('phaseExif');
+
+    for (const file of files) {
+      const shortName = file.name.length > 30 ? file.name.substring(0, 27) + '...' : file.name;
+      progressStatus.textContent = shortName;
+
+      if (processed === 0) setPhase('phaseExif');
+      if (processed === Math.floor(total * 0.1)) setPhase('phaseQuality');
+      if (processed === Math.floor(total * 0.5)) setPhase('phaseFaces');
+
+      const result = await analyzePhoto(file);
+      if (result) {
+        result.overallScore = calculateOverallScore(result);
+        result.tier = assignTier(result.overallScore);
+        photos.push(result);
+      }
+
+      processed++;
+      progressFill.style.width = Math.round((processed / total) * 100) + '%';
+      progressCount.textContent = `${processed} / ${total}`;
+
+      await new Promise(r => setTimeout(r, 5));
+    }
+
+    // Duplicate detection phase
+    setPhase('phaseDups');
+    progressStatus.textContent = 'Finding duplicates...';
+    await new Promise(r => setTimeout(r, 50));
+    findDuplicateGroups();
+
+    // Mark all phases done
+    ['phaseExif', 'phaseQuality', 'phaseFaces', 'phaseDups'].forEach(id => {
+      document.getElementById(id).className = 'phase-item done';
+    });
+
+    progressStatus.textContent = 'Done!';
+    progressLabel.textContent = `Analyzed ${total} photos`;
+
+    photos.sort((a, b) => b.overallScore - a.overallScore);
+
+    setTimeout(() => {
+      progressContainer.classList.remove('visible');
+      document.getElementById('addPhotosBtn').style.display = 'flex';
+      exportBtn.style.display = 'flex';
+      if (photos.length >= 2) document.getElementById('compareBtn').style.display = 'flex';
+      if (duplicateGroups.length > 0) {
+        document.getElementById('dupStat').style.display = 'flex';
+        document.getElementById('dupGroupCount').textContent = duplicateGroups.length;
+      }
+      keyboardHints.classList.add('visible');
+      renderGrid();
+      updateStats();
+      buildFilmstrip();
+    }, 400);
+  }
+
+  // ========== SORTING ==========
+  function sortPhotos() {
+    const [field, dir] = currentSort.split('-');
+    photos.sort((a, b) => {
+      let va, vb;
+      switch (field) {
+        case 'score': va = a.overallScore; vb = b.overallScore; break;
+        case 'name': va = a.filename.toLowerCase(); vb = b.filename.toLowerCase(); break;
+        case 'sharpness': va = a.sharpness.score; vb = b.sharpness.score; break;
+        case 'iso': va = a.exif.iso || 999999; vb = b.exif.iso || 999999; break;
+        default: va = a.overallScore; vb = b.overallScore;
+      }
+      if (typeof va === 'string') {
+        return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      }
+      return dir === 'asc' ? va - vb : vb - va;
+    });
+  }
+
+  // ========== RENDER GRID ==========
+  function getFilteredPhotos() {
+    if (currentFilter === 'all') return photos;
+    if (currentFilter === 'blink') return photos.filter(p => p.face.blinkDetected);
+    if (currentFilter === 'duplicates') return photos.filter(p => p.dupGroupId >= 0);
+    return photos.filter(p => (p.manualTier || p.tier) === currentFilter);
+  }
+
+  function renderGrid() {
+    photoGrid.innerHTML = '';
+    const filtered = getFilteredPhotos();
+
+    if (filtered.length === 0) {
+      photoGrid.innerHTML = '<div class="empty-state">No photos in this category</div>';
+      return;
+    }
+
+    // If showing duplicates, group them
+    if (currentFilter === 'duplicates') {
+      const groupsShown = new Set();
+      for (const photo of filtered) {
+        if (photo.dupGroupId >= 0 && !groupsShown.has(photo.dupGroupId)) {
+          groupsShown.add(photo.dupGroupId);
+          const group = duplicateGroups[photo.dupGroupId];
+
+          const header = document.createElement('div');
+          header.className = 'dup-group-header';
+          header.innerHTML = `
+            <span class="dup-group-label">&#128257; Group ${photo.dupGroupId + 1}</span>
+            <span class="dup-group-count">${group.indices.length} similar</span>
+            <span class="dup-group-best">Best picked</span>
+          `;
+          photoGrid.appendChild(header);
+
+          for (const idx of group.indices) {
+            photoGrid.appendChild(createPhotoCard(photos[idx]));
+          }
+        }
+      }
+    } else {
+      filtered.forEach(photo => photoGrid.appendChild(createPhotoCard(photo)));
+    }
+  }
+
+  function createPhotoCard(photo) {
+    const actualTier = photo.manualTier || photo.tier;
+    const globalIdx = photos.indexOf(photo);
+
+    const card = document.createElement('div');
+    card.className = `photo-card tier-${actualTier}${photo.isDupBest ? ' dup-best' : ''}`;
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', `${photo.filename}, score ${photo.overallScore}, ${actualTier}`);
+
+    // Build icon indicators
+    let icons = '';
+    if (photo.face.hasFaces) icons += `<span class="card-icon" title="${photo.face.faceCount} face(s)">&#128100;</span>`;
+    if (photo.face.blinkDetected) icons += `<span class="card-icon warn" title="Blink detected">&#128065;</span>`;
+    if (photo.dupGroupId >= 0 && !photo.isDupBest) icons += `<span class="card-icon" title="Duplicate">&#128257;</span>`;
+
+    // EXIF summary
+    let exifBadge = '';
+    if (photo.exif.iso) {
+      exifBadge = `<span class="score-badge exif">ISO ${photo.exif.iso}</span>`;
+    }
+
+    card.innerHTML = `
+      <img class="thumbnail" src="${photo.thumbnailUrl}" alt="${photo.filename}" loading="lazy">
+      <div class="card-overlay">
+        <span class="tier-badge ${actualTier}">${actualTier}</span>
+        <div class="card-icons">${icons}</div>
+      </div>
+      <div class="info">
+        <div class="filename" title="${photo.filename}">${photo.filename}</div>
+        <div class="card-meta">
+          <span class="score-badge overall-${actualTier}">${photo.overallScore}</span>
+          <span class="score-badge metric">S:${photo.sharpness.score}</span>
+          ${photo.face.hasFaces ? `<span class="score-badge metric">E:${photo.face.eyeFocus}</span>` : ''}
+          ${exifBadge}
+          ${photo.face.blinkDetected ? '<span class="score-badge blink-warn">Blink</span>' : ''}
+        </div>
+      </div>
+    `;
+
+    card.addEventListener('click', (e) => {
+      if (e.shiftKey && compareSelection.length < 2) {
+        compareSelection.push(globalIdx);
+        card.style.outline = '2px solid var(--accent)';
+        if (compareSelection.length === 2) openCompare();
+        return;
+      }
+      openModal(globalIdx);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(globalIdx); }
+    });
+
+    return card;
+  }
+
+  function updateStats() {
+    const total = photos.length;
+    const keepN = photos.filter(p => (p.manualTier || p.tier) === 'keep').length;
+    const maybeN = photos.filter(p => (p.manualTier || p.tier) === 'maybe').length;
+    const rejectN = photos.filter(p => (p.manualTier || p.tier) === 'reject').length;
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('keepCount').textContent = keepN;
+    document.getElementById('maybeCount').textContent = maybeN;
+    document.getElementById('rejectCount').textContent = rejectN;
+  }
+
+  // ========== MODAL ==========
+  function openModal(idx) {
+    currentModalIndex = idx;
+    const photo = photos[idx];
+    if (!photo) return;
+
+    modalTitle.textContent = photo.filename;
+    if (!photo.fullUrl) photo.fullUrl = URL.createObjectURL(photo.file);
+    modalImage.src = photo.fullUrl;
+    modalImage.alt = photo.filename;
+
+    const actualTier = photo.manualTier || photo.tier;
+    const tierColor = actualTier === 'keep' ? 'var(--keep)' : actualTier === 'maybe' ? 'var(--maybe)' : 'var(--reject)';
+
+    const metrics = [
+      { label: 'Overall', value: photo.overallScore, color: tierColor },
+      { label: 'Sharpness', value: photo.sharpness.score, color: 'var(--accent-hover)' },
+      { label: 'Exposure', value: photo.exposure.score, color: 'var(--accent-hover)' },
+      { label: 'Composition', value: photo.composition.score, color: 'var(--accent-hover)' },
+      { label: 'Color', value: photo.color.score, color: 'var(--accent-hover)' },
+    ];
+    if (photo.face.hasFaces) {
+      metrics.push({ label: 'Eye Focus', value: photo.face.eyeFocus, color: 'var(--accent-hover)' });
+      metrics.push({ label: 'Catchlight', value: photo.face.catchlight, color: 'var(--accent-hover)' });
+    }
+    metrics.push({ label: 'Noise', value: photo.noise.score, color: 'var(--accent-hover)' });
+
+    detailScores.innerHTML = metrics.map(m => `
+      <div class="detail-score-card">
+        <div class="label">${m.label}</div>
+        <div class="value" style="color:${m.color}">${m.value}</div>
+        <div class="bar"><div class="bar-fill" style="width:${m.value}%;background:${m.color}"></div></div>
+      </div>
+    `).join('');
+
+    // EXIF section
+    const exifSection = document.getElementById('exifSection');
+    const exifGrid = document.getElementById('exifGrid');
+    if (photo.exif && (photo.exif.iso || photo.exif.fNumber || photo.exif.exposureTime)) {
+      exifSection.style.display = 'block';
+      let exifItems = '';
+      if (photo.exif.model) exifItems += `<div class="exif-item"><div class="label">Camera</div><div class="value">${photo.exif.model}</div></div>`;
+      if (photo.exif.focalLength) exifItems += `<div class="exif-item"><div class="label">Focal</div><div class="value">${Math.round(photo.exif.focalLength)}mm</div></div>`;
+      if (photo.exif.fNumber) exifItems += `<div class="exif-item"><div class="label">Aperture</div><div class="value">f/${photo.exif.fNumber.toFixed(1)}</div></div>`;
+      if (photo.exif.exposureTimeStr) exifItems += `<div class="exif-item"><div class="label">Shutter</div><div class="value">${photo.exif.exposureTimeStr}s</div></div>`;
+      if (photo.exif.iso) exifItems += `<div class="exif-item"><div class="label">ISO</div><div class="value">${photo.exif.iso}</div></div>`;
+      exifItems += `<div class="exif-item"><div class="label">EXIF Score</div><div class="value" style="color:var(--accent-hover)">${photo.exifScore.score}</div></div>`;
+      exifGrid.innerHTML = exifItems;
+    } else {
+      exifSection.style.display = 'none';
+    }
+
+    // Notes
+    const notes = [];
+    if (photo.face.hasFaces) {
+      notes.push(`${photo.face.faceCount} face(s) detected.`);
+      if (photo.face.blinkDetected) notes.push('&#9888; Blink detected — subject may have closed eyes.');
+      if (photo.face.catchlight >= 60) notes.push('Good catchlight — eyes look alive.');
+      else if (photo.face.catchlight > 20) notes.push('Weak catchlight.');
+      else notes.push('No catchlight — eyes may look dull.');
+      if (photo.face.eyeFocus >= 70) notes.push('Eyes sharp and in focus.');
+      else if (photo.face.eyeFocus >= 40) notes.push('Eyes slightly soft.');
+      else notes.push('Eyes out of focus.');
+    } else {
+      notes.push('No faces — scored on general quality.');
+    }
+
+    if (photo.color.colorCast) notes.push('Color cast detected — possible white balance issue.');
+    if (parseFloat(photo.exposure.shadowClip) > 5) notes.push(`Shadow clipping: ${photo.exposure.shadowClip}%.`);
+    if (parseFloat(photo.exposure.highlightClip) > 5) notes.push(`Highlight clipping: ${photo.exposure.highlightClip}%.`);
+    if (photo.dupGroupId >= 0) {
+      const group = duplicateGroups[photo.dupGroupId];
+      notes.push(`Part of a group of ${group.indices.length} similar photos.${photo.isDupBest ? ' This is the best in the group.' : ''}`);
+    }
+    if (photo.exif.iso && photo.exif.iso > 3200) notes.push(`High ISO (${photo.exif.iso}) — expect visible noise.`);
+
+    detailNotes.innerHTML = notes.join(' ');
+
+    document.querySelectorAll('[data-set-tier]').forEach(btn => {
+      btn.style.opacity = btn.dataset.setTier === actualTier ? '1' : '0.5';
+    });
+
+    modalOverlay.classList.add('visible');
+    document.getElementById('modalClose').focus();
+  }
+
+  function closeModal() {
+    modalOverlay.classList.remove('visible');
+    currentModalIndex = -1;
+  }
+
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  document.getElementById('modalPrev').addEventListener('click', () => {
+    if (currentModalIndex > 0) openModal(currentModalIndex - 1);
+  });
+  document.getElementById('modalNext').addEventListener('click', () => {
+    if (currentModalIndex < photos.length - 1) openModal(currentModalIndex + 1);
+  });
+  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+
+  document.querySelectorAll('[data-set-tier]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (currentModalIndex < 0) return;
+      photos[currentModalIndex].manualTier = btn.dataset.setTier;
+      document.querySelectorAll('[data-set-tier]').forEach(b => {
+        b.style.opacity = b.dataset.setTier === btn.dataset.setTier ? '1' : '0.5';
+      });
+      renderGrid();
+      updateStats();
+    });
+  });
+
+  // ========== FILMSTRIP ==========
+  function buildFilmstrip() {
+    const strip = document.getElementById('filmstripStrip');
+    strip.innerHTML = '';
+    photos.forEach((photo, idx) => {
+      const thumb = document.createElement('img');
+      thumb.src = photo.thumbnailUrl;
+      thumb.className = `strip-thumb tier-${photo.manualTier || photo.tier}${idx === filmstripIndex ? ' active' : ''}`;
+      thumb.addEventListener('click', () => showFilmstripPhoto(idx));
+      strip.appendChild(thumb);
+    });
+    if (photos.length > 0) showFilmstripPhoto(0);
+  }
+
+  function showFilmstripPhoto(idx) {
+    filmstripIndex = idx;
+    const photo = photos[idx];
+    if (!photo) return;
+
+    if (!photo.fullUrl) photo.fullUrl = URL.createObjectURL(photo.file);
+    document.getElementById('filmstripImage').src = photo.fullUrl;
+    document.getElementById('fsFilename').textContent = photo.filename;
+
+    // EXIF line
+    const parts = [];
+    if (photo.exif.focalLength) parts.push(`${Math.round(photo.exif.focalLength)}mm`);
+    if (photo.exif.fNumber) parts.push(`f/${photo.exif.fNumber.toFixed(1)}`);
+    if (photo.exif.exposureTimeStr) parts.push(`${photo.exif.exposureTimeStr}s`);
+    if (photo.exif.iso) parts.push(`ISO ${photo.exif.iso}`);
+    document.getElementById('fsExifLine').textContent = parts.join(' · ');
+
+    // Scores
+    const actualTier = photo.manualTier || photo.tier;
+    document.getElementById('fsScores').innerHTML = `
+      <div class="fs-score"><div class="label">Score</div><div class="value" style="color:var(--${actualTier})">${photo.overallScore}</div></div>
+      <div class="fs-score"><div class="label">Sharp</div><div class="value">${photo.sharpness.score}</div></div>
+      ${photo.face.hasFaces ? `<div class="fs-score"><div class="label">Eyes</div><div class="value">${photo.face.eyeFocus}</div></div>` : ''}
+    `;
+
+    // Update strip active state
+    document.querySelectorAll('.strip-thumb').forEach((t, i) => {
+      t.classList.toggle('active', i === idx);
+    });
+
+    // Scroll strip to show current
+    const strip = document.getElementById('filmstripStrip');
+    const thumbEl = strip.children[idx];
+    if (thumbEl) thumbEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+
+  document.getElementById('fsPrev').addEventListener('click', () => {
+    if (filmstripIndex > 0) showFilmstripPhoto(filmstripIndex - 1);
+  });
+  document.getElementById('fsNext').addEventListener('click', () => {
+    if (filmstripIndex < photos.length - 1) showFilmstripPhoto(filmstripIndex + 1);
+  });
+
+  document.querySelectorAll('[data-fs-tier]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (filmstripIndex < 0 || filmstripIndex >= photos.length) return;
+      photos[filmstripIndex].manualTier = btn.dataset.fsTier;
+      const strip = document.getElementById('filmstripStrip');
+      if (strip.children[filmstripIndex]) {
+        strip.children[filmstripIndex].className = `strip-thumb tier-${btn.dataset.fsTier} active`;
+      }
+      showFilmstripPhoto(filmstripIndex);
+      updateStats();
+    });
+  });
+
+  // ========== COMPARE ==========
+  function openCompare() {
+    if (compareSelection.length < 2) return;
+    const p1 = photos[compareSelection[0]];
+    const p2 = photos[compareSelection[1]];
+    if (!p1 || !p2) return;
+
+    if (!p1.fullUrl) p1.fullUrl = URL.createObjectURL(p1.file);
+    if (!p2.fullUrl) p2.fullUrl = URL.createObjectURL(p2.file);
+
+    const body = document.getElementById('compareBody');
+    body.innerHTML = [p1, p2].map(p => {
+      const tier = p.manualTier || p.tier;
+      return `
+        <div class="compare-side">
+          <img src="${p.fullUrl}" alt="${p.filename}">
+          <div class="compare-side-info">
+            <span class="compare-side-name">${p.filename}</span>
+            <span class="score-badge overall-${tier}">${p.overallScore} ${tier}</span>
+            <span class="score-badge metric">Sharp: ${p.sharpness.score}</span>
+            ${p.face.hasFaces ? `<span class="score-badge metric">Eyes: ${p.face.eyeFocus}</span>` : ''}
+            ${p.exif.iso ? `<span class="score-badge exif">ISO ${p.exif.iso}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('comparePanel').classList.add('visible');
+  }
+
+  document.getElementById('compareBtn').addEventListener('click', () => {
+    if (compareSelection.length === 2) {
+      openCompare();
+    } else {
+      alert('Shift+click two photos in the grid to compare them side by side.');
+    }
+  });
+
+  document.getElementById('closeCompare').addEventListener('click', () => {
+    document.getElementById('comparePanel').classList.remove('visible');
+    compareSelection = [];
+    renderGrid();
+  });
+
+  // ========== KEYBOARD NAVIGATION ==========
+  document.addEventListener('keydown', (e) => {
+    // Modal navigation
+    if (modalOverlay.classList.contains('visible')) {
+      if (e.key === 'Escape') closeModal();
+      if (e.key === 'ArrowRight' && currentModalIndex < photos.length - 1) openModal(currentModalIndex + 1);
+      if (e.key === 'ArrowLeft' && currentModalIndex > 0) openModal(currentModalIndex - 1);
+      if (e.key === '1') { photos[currentModalIndex].manualTier = 'keep'; renderGrid(); updateStats(); openModal(currentModalIndex); }
+      if (e.key === '2') { photos[currentModalIndex].manualTier = 'maybe'; renderGrid(); updateStats(); openModal(currentModalIndex); }
+      if (e.key === '3') { photos[currentModalIndex].manualTier = 'reject'; renderGrid(); updateStats(); openModal(currentModalIndex); }
+      return;
+    }
+
+    // Compare panel
+    if (document.getElementById('comparePanel').classList.contains('visible')) {
+      if (e.key === 'Escape') {
+        document.getElementById('comparePanel').classList.remove('visible');
+        compareSelection = [];
+        renderGrid();
+      }
+      return;
+    }
+
+    // Filmstrip navigation
+    if (currentView === 'filmstrip' && photos.length > 0) {
+      if (e.key === 'ArrowRight' && filmstripIndex < photos.length - 1) {
+        e.preventDefault();
+        showFilmstripPhoto(filmstripIndex + 1);
+      }
+      if (e.key === 'ArrowLeft' && filmstripIndex > 0) {
+        e.preventDefault();
+        showFilmstripPhoto(filmstripIndex - 1);
+      }
+      if (e.key === '1') { photos[filmstripIndex].manualTier = 'keep'; showFilmstripPhoto(filmstripIndex); updateStats(); buildFilmstrip(); }
+      if (e.key === '2') { photos[filmstripIndex].manualTier = 'maybe'; showFilmstripPhoto(filmstripIndex); updateStats(); buildFilmstrip(); }
+      if (e.key === '3') { photos[filmstripIndex].manualTier = 'reject'; showFilmstripPhoto(filmstripIndex); updateStats(); buildFilmstrip(); }
+    }
+  });
+
+  // ========== FILTERS ==========
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      renderGrid();
+    });
+  });
+
+  // ========== SORT ==========
+  document.getElementById('sortSelect').addEventListener('change', (e) => {
+    currentSort = e.target.value;
+    sortPhotos();
+    renderGrid();
+    buildFilmstrip();
+  });
+
+  // ========== VIEW TOGGLE ==========
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentView = btn.dataset.view;
+
+      photoGrid.style.display = currentView === 'filmstrip' ? 'none' : 'grid';
+      filmstripContainer.classList.toggle('visible', currentView === 'filmstrip');
+
+      if (currentView === 'large') {
+        photoGrid.classList.add('view-large');
+      } else {
+        photoGrid.classList.remove('view-large');
+      }
+
+      if (currentView === 'filmstrip') {
+        buildFilmstrip();
+      }
+    });
+  });
+
+  // ========== SETTINGS ==========
+  document.getElementById('settingsBtn').addEventListener('click', () => settingsPanel.classList.toggle('visible'));
+  document.getElementById('closeSettings').addEventListener('click', () => settingsPanel.classList.remove('visible'));
+
+  function setupSlider(id, valId, suffix, callback) {
+    const slider = document.getElementById(id);
+    const valEl = document.getElementById(valId);
+    slider.addEventListener('input', () => {
+      valEl.textContent = slider.value + suffix;
+      callback(parseFloat(slider.value));
+      recalcAll();
+    });
+  }
+
+  setupSlider('sharpnessWeight', 'sharpnessWeightVal', '%', v => weights.sharpness = v / 100);
+  setupSlider('eyeFocusWeight', 'eyeFocusWeightVal', '%', v => weights.eyeFocus = v / 100);
+  setupSlider('exposureWeight', 'exposureWeightVal', '%', v => weights.exposure = v / 100);
+  setupSlider('catchlightWeight', 'catchlightWeightVal', '%', v => weights.catchlight = v / 100);
+  setupSlider('compositionWeight', 'compositionWeightVal', '%', v => weights.composition = v / 100);
+  setupSlider('colorWeight', 'colorWeightVal', '%', v => weights.color = v / 100);
+  setupSlider('keepThresh', 'keepThreshVal', '', v => keepThreshold = v);
+  setupSlider('rejectThresh', 'rejectThreshVal', '', v => rejectThreshold = v);
+  setupSlider('dupThreshold', 'dupThresholdVal', '', v => {
+    dupSensitivity = v;
+    // Re-run duplicate detection
+    photos.forEach(p => { p.dupGroupId = -1; p.isDupBest = false; });
+    findDuplicateGroups();
+    if (duplicateGroups.length > 0) {
+      document.getElementById('dupStat').style.display = 'flex';
+      document.getElementById('dupGroupCount').textContent = duplicateGroups.length;
+    }
+  });
+
+  // Toggle switches
+  document.querySelectorAll('.toggle-switch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('on');
+      const isOn = btn.classList.contains('on');
+      switch (btn.id) {
+        case 'toggleDups': features.duplicates = isOn; break;
+        case 'toggleBlink': features.blink = isOn; break;
+        case 'toggleExif': features.exif = isOn; break;
+        case 'toggleComposition': features.composition = isOn; break;
+      }
+    });
+  });
+
+  function recalcAll() {
+    photos.forEach(p => {
+      p.overallScore = calculateOverallScore(p);
+      if (!p.manualTier) p.tier = assignTier(p.overallScore);
+    });
+    sortPhotos();
+    renderGrid();
+    updateStats();
+  }
+
+  // ========== EXPORT ==========
+  exportBtn.addEventListener('click', () => {
+    const lines = ['filename,overall_score,tier,sharpness,exposure,composition,color,eye_focus,catchlight,noise,blink,faces,iso,aperture,shutter,focal_length,dup_group'];
+    photos.forEach(p => {
+      const tier = p.manualTier || p.tier;
+      lines.push([
+        `"${p.filename}"`,
+        p.overallScore,
+        tier,
+        p.sharpness.score,
+        p.exposure.score,
+        p.composition.score,
+        p.color.score,
+        p.face.eyeFocus || 'N/A',
+        p.face.catchlight || 'N/A',
+        p.noise.score,
+        p.face.blinkDetected ? 'YES' : 'no',
+        p.face.faceCount,
+        p.exif.iso || '',
+        p.exif.fNumber ? `f/${p.exif.fNumber.toFixed(1)}` : '',
+        p.exif.exposureTimeStr || '',
+        p.exif.focalLength ? `${Math.round(p.exif.focalLength)}mm` : '',
+        p.dupGroupId >= 0 ? `Group ${p.dupGroupId + 1}${p.isDupBest ? ' (BEST)' : ''}` : ''
+      ].join(','));
+    });
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'photocull-results.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+})();
+</script>
+</body>
+</html>
